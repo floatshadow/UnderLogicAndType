@@ -110,6 +110,29 @@ Definition list_match_eq_ty (v : value) : context_ty :=
   (fun q => {: List | q} ⊓ [: List | q])
     (mk_q_eq (vbvar 0) v).
 
+(** Target shapes for which fixpoint unrolling is proved sound. *)
+Fixpoint fix_unroll_shape (τ : context_ty) : Prop :=
+  match τ with
+  | CTArrow _ _ | CTOver _ _ | CTUnder _ _ => True
+  | CTInter τ1 τ2 | CTUnion τ1 τ2 =>
+      fix_unroll_shape τ1 /\ fix_unroll_shape τ2
+  | _ => False
+  end.
+
+(** Capability case split: every model of [Γ] agrees on [X] with a model of
+    [Γa] or of [Γb] (a disjunctive [ctx_sub_under]). *)
+Definition ctx_case_under
+    (Σ : gmap atom ty) (X : aset) (Γ Γa Γb : ctx) : Prop :=
+  wf_ctx_under Σ Γ ∧
+  wf_ctx_under Σ Γa ∧
+  wf_ctx_under Σ Γb ∧
+  ty_env_agree_on X (erase_ctx Γ) (erase_ctx Γa) ∧
+  ty_env_agree_on X (erase_ctx Γ) (erase_ctx Γb) ∧
+  ∀ r, r ⊨ ctx_denote_under Σ Γ →
+       exists r',
+         res_restrict r X ⊑ r' /\
+         (r' ⊨ ctx_denote_under Σ Γa \/ r' ⊨ ctx_denote_under Σ Γb).
+
 Notation "Σ ';' Γ '⊢wf' e '⋮' τ" :=
   (context_typing_wf Σ Γ e τ)
   (at level 20, Γ constr, e constr, τ constr,
@@ -149,6 +172,109 @@ Inductive has_extended_context_type
       Σ; Γ ⊢ₓ e1 ⋮ τ1 ->
       Σ; (Γ ,, (x ∷ τ1)) ⊢ₓ e2 ⋮ τ2 ->
       Σ; Γ ⊢ₓ let x := e1 in e2 ⋮ τ2
+
+  (** Named separating variants (T-LamD / T-LetD with a concrete binder). *)
+  | EXT_LamDNamedErased Γ x Tx τx τ e :
+      Tx = erase_ty τx ->
+      Σ; Γ ⊢wf ret (lam_named x Tx e) ⋮ (τx -∗ τ) ->
+      Σ; (Γ ∗ (x ∷ τx)) ⊢ₓ e ⋮ τ ->
+      Σ; Γ ⊢ₓ ret (lam_named x Tx e) ⋮ (τx -∗ τ)
+
+  | EXT_LetDNamed Γ1 Γ2 x τ1 τ2 e1 e2 :
+      Σ; Γ1 ∗ Γ2 ⊢wf let x := e1 in e2 ⋮ τ2 ->
+      Σ; Γ1 ⊢ₓ e1 ⋮ τ1 ->
+      Σ; (Γ2 ∗ (x ∷ τ1)) ⊢ₓ e2 ⋮ τ2 ->
+      Σ; Γ1 ∗ Γ2 ⊢ₓ let x := e1 in e2 ⋮ τ2
+
+  (** Named T-Fix: [fixfun_named self arg] with a concrete argument binder.
+      Mirrors [EXT_Fix] after opening the argument binder with [arg]. *)
+  | EXT_FixNamed Γ φx τ (self arg : atom) (b : base_ty) (t : ty) body :
+      erase_ty τ = t ->
+      Σ; Γ ⊢wf ret (fixfun_named self arg (TBase b) t body) ⋮ ({: b | φx} → τ) ->
+      Σ; (Γ ,, (arg ∷ {: b | φx})) ⊢ₓ
+        ret (lam_named self (TBase b →ₜ t) body) ⋮
+        (fix_rec_call_ty b arg {: b | φx} τ → ({0 ~> arg} τ)) ->
+      Σ; Γ ⊢ₓ ret (fixfun_named self arg (TBase b) t body) ⋮ ({: b | φx} → τ)
+
+  (** Named T-ListMatch / T-TreeMatch in the paper's form (Fig. 4, T-Match):
+      the context of a reachable branch BINDS the pattern variables itself,
+      with user-chosen types (they are introduced by T-CtxSub, whose
+      extension condition is exactly what makes this sound), and the precise
+      pattern equation [d(ȳ) : {ν = x} ⊓ [ν = x]] is checked in that same
+      context.  A previous version checked the premises under [Γ ,, Γpat] and
+      concluded at [Γ]; that was UNSOUND (an unmodelable [Γpat] makes every
+      premise vacuous): see [ExtendedRuleSoundness.ext_list_match_cons_only_named_unsound].
+      These shapes are proved sound in [ExtendedRuleSoundness]
+      ([ext_*_paper_rule_sound], [ext_list_match_nil_sound], ...). *)
+  | EXT_ListMatchBothNamed Γn Γc (x : atom) τn τc enil hd tl econs :
+      Σ; Γn ⊕ Γc ⊢wf
+        match_list_named (avar x) enil hd tl econs ⋮ (τn ⊕ τc) ->
+      Σ; Γn ⊢ₓ ret Nil ⋮ (list_match_eq_ty (avar x)) ->
+      Σ; Γc ⊢ₓ (avar hd ::ᵗ avar tl) ⋮ (list_match_eq_ty (avar x)) ->
+      Σ; Γn ⊢ₓ enil ⋮ τn ->
+      Σ; Γc ⊢ₓ econs ⋮ τc ->
+      Σ; Γn ⊕ Γc ⊢ₓ match_list_named (avar x) enil hd tl econs ⋮ (τn ⊕ τc)
+
+  | EXT_ListMatchConsOnlyNamed Γ (x : atom) τ enil hd tl econs :
+      Σ; Γ ⊢wf match_list_named (avar x) enil hd tl econs ⋮ τ ->
+      Σ; Γ ⊢ₓ (avar hd ::ᵗ avar tl) ⋮ (list_match_eq_ty (avar x)) ->
+      Σ; Γ ⊢ₓ econs ⋮ τ ->
+      Σ; Γ ⊢ₓ match_list_named (avar x) enil hd tl econs ⋮ τ
+
+  | EXT_TreeMatchBothNamed Γl Γn (x : atom) τl τn eleaf root left right enode :
+      left <> right ->
+      Σ; Γl ⊕ Γn ⊢wf
+        match_tree_named (avar x) eleaf root left right enode ⋮ (τl ⊕ τn) ->
+      Σ; Γl ⊢ₓ ret Leaf ⋮ (tree_match_eq_ty (avar x)) ->
+      Σ; Γn ⊢ₓ [| avar root, avar left, avar right |] ⋮ (tree_match_eq_ty (avar x)) ->
+      Σ; Γl ⊢ₓ eleaf ⋮ τl ->
+      Σ; Γn ⊢ₓ enode ⋮ τn ->
+      Σ; Γl ⊕ Γn ⊢ₓ
+        match_tree_named (avar x) eleaf root left right enode ⋮ (τl ⊕ τn)
+
+  | EXT_TreeMatchNodeOnlyNamed Γ (x : atom) τ eleaf root left right enode :
+      left <> right ->
+      Σ; Γ ⊢wf match_tree_named (avar x) eleaf root left right enode ⋮ τ ->
+      Σ; Γ ⊢ₓ [| avar root, avar left, avar right |] ⋮ (tree_match_eq_ty (avar x)) ->
+      Σ; Γ ⊢ₓ enode ⋮ τ ->
+      Σ; Γ ⊢ₓ match_tree_named (avar x) eleaf root left right enode ⋮ τ
+
+  (** T-VarComma.  The paper's T-Var [x:τ ⊢ x : τ] is checked under the basic
+      context [Σ,⌊Γ⌋] when [τ] depends on [Γ] (WfComma).  The Rocq judgment
+      keeps [Σ] fixed and checks [τ] against [⌊Γ⌋], so the dependency
+      bindings stay in the context; T-CtxSub does all other structural work.
+      Proved sound against the core denotation in [ExtendedRuleSoundness]. *)
+  | EXT_VarComma Γ x τ :
+      Σ; Γ ,, (x ∷ τ) ⊢wf ret (avar x) ⋮ τ ->
+      Σ; Γ ,, (x ∷ τ) ⊢ₓ ret (avar x) ⋮ τ
+
+  (** T-CtxCase (capability case split).  Every capability of [Γ] is, up to
+      T-CtxSub's projection on the free variables, a capability of [Γa] or of
+      [Γb].  Used to type a match whose branch reachability is not determined
+      by the context: split into "both reachable" ([Γt ⊕ Γf]), "true only" and
+      "false only".  Proved sound in [ExtendedRuleSoundness]. *)
+  | EXT_CtxCase Γ Γa Γb e τ :
+      Σ; Γ ⊢wf e ⋮ τ ->
+      Σ; Γa ⊢ₓ e ⋮ τ ->
+      Σ; Γb ⊢ₓ e ⋮ τ ->
+      ctx_case_under Σ (fv_tm e ∪ fv_cty τ) Γ Γa Γb ->
+      Σ; Γ ⊢ₓ e ⋮ τ
+
+  (** T-FixUnroll.  A recursive function may be typed by its one-step
+      unfolding [λarg. body[self := fix]] (the standard unrolling used in
+      incorrectness reasoning): [fix v] and [unfold v] step to the same term.
+      Proved sound for EVERY target type in
+      [ExtendedRuleSoundness.ext_fix_unroll_named_sound_ext]
+      ([fix_unroll_shape_ext_all]).  [lc_tm body] is needed: a dangling bound
+      variable would be captured by different binders in the fix value and in
+      its unfolding. *)
+  | EXT_FixUnrollNamed Γ (self arg : atom) (sx t : ty) body τ :
+      lc_tm body ->
+      Σ; Γ ⊢wf ret (fixfun_named self arg sx t body) ⋮ τ ->
+      Σ; Γ ⊢ₓ
+        ret (lam_named arg sx
+          (tm_subst self (fixfun_named self arg sx t body) body)) ⋮ τ ->
+      Σ; Γ ⊢ₓ ret (fixfun_named self arg sx t body) ⋮ τ
 
   (** T-Sub *)
   | EXT_Sub Γ e τ1 τ2 :

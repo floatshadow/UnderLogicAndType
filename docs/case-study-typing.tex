@@ -1,0 +1,567 @@
+\documentclass[10pt]{article}
+
+\usepackage[margin=0.9in]{geometry}
+\usepackage{lmodern}
+\usepackage[T1]{fontenc}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb}
+\usepackage{stmaryrd}
+\usepackage{pifont}
+\usepackage{mathpartir}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage[colorlinks=true,linkcolor=blue!50!black,urlcolor=blue!50!black]{hyperref}
+
+\setlist{nosep,leftmargin=1.4em}
+
+% ---------------------------------------------------------------- notation
+\newcommand{\ov}[2]{\{\nu{:}#1 \mid #2\}}          % demonic / over
+\newcommand{\un}[2]{[\nu{:}#1 \mid #2]}            % angelic / under
+\newcommand{\Prec}[1]{\mathsf{P}(#1)}               % precise: {nu = e} /\ [nu = e]
+\newcommand{\Eq}[1]{\mathsf{Eq}(#1)}                % {nu = v} /\ [nu = v]
+\newcommand{\Nat}{\mathsf{nat}}
+\newcommand{\Bool}{\mathsf{bool}}
+\newcommand{\List}{\mathsf{list}}
+\newcommand{\Tree}{\mathsf{tree}}
+\newcommand{\wand}{\mathrel{-\!\!*}}
+\newcommand{\inter}{\sqcap}
+\newcommand{\Sum}{\oplus}
+\newcommand{\pers}{\Box}
+\newcommand{\entc}{\mathrel{,}}
+\newcommand{\sep}{\mathrel{*}}
+\newcommand{\vd}{\vdash_{\!x}}
+\newcommand{\den}[1]{\llbracket #1 \rrbracket}
+\newcommand{\ctxsub}[1]{\mathrel{\preceq_{#1}}}
+\newcommand{\ctxcase}[1]{\mathrel{\preceq^{\vee}_{#1}}}
+\newcommand{\sub}{\mathrel{<:}}
+\newcommand{\kw}[1]{\ensuremath{\mathbf{#1}}}
+\newcommand{\rocq}[1]{\texttt{#1}}
+\newcommand{\RN}[1]{\textsc{#1}}
+\newcommand{\obl}[1]{\ensuremath{\textcolor{red!60!black}{\scriptstyle\langle #1\rangle}}}
+\newcommand{\qed}[1]{\ensuremath{\textcolor{green!40!black}{\scriptstyle\langle #1\rangle}}}
+
+\title{Typing the Case Studies of \emph{Context Types} in Rocq:\\
+Extended Rules, Concrete Derivations, and Open Issues}
+\author{Summary of the \texttt{ProofAutomation} / \texttt{CaseStudy} development}
+\date{October 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We report on mechanizing typing derivations for the case studies of the draft
+paper \emph{Context Types: Bunched Modalities for Unifying Safety and
+Reachability}. The Rocq development already proves the Fundamental theorem for
+the core judgment; the case studies, however, only had basic (erased) typings.
+We added derivations in a case-study judgment $\Sigma;\Gamma \vd e : \tau$,
+extended it with four rule families (a dependent variable rule, a
+capability case split, fixpoint unrolling, and paper-form constructor matches),
+and proved each new rule sound against the core denotation. We then derived
+the paper's examples, found several places where the paper's stated type is
+semantically false or vacuous, and isolated one remaining design issue in
+\RN{T-Fix}. All structural steps of all derivations are checked (\rocq{Qed});
+semantic side conditions are isolated as named obligations.
+\end{abstract}
+
+% =====================================================================
+\section{Setting and trust model}
+
+\paragraph{Judgment.} \rocq{ProofAutomation/ExtendedTyping.v} defines
+$\Sigma;\Gamma\vd e:\tau$ (\rocq{has\_extended\_context\_type}). It contains
+every rule of the core judgment \rocq{has\_context\_type}
+(\rocq{typing\_to\_extended\_typing}), plus case-study conveniences. Types are
+$\ov{b}{\phi}$ (demonic/over), $\un{b}{\phi}$ (angelic/under), $\tau_1\inter\tau_2$,
+$\tau_1\Sum\tau_2$, $x{:}\tau_x\to\tau$, $x{:}\tau_x\wand\tau$ and $\pers\tau$;
+contexts are built with entangled ``$\entc$'', independent ``$\sep$'' and sum
+``$\Sum$''. We write $\Prec{e}$ for the precise type
+$\ov{b}{\nu = e}\inter\un{b}{\nu = e}$ that the operator rules produce, and
+$\Eq{v}$ for the match-equation type $\ov{b}{\nu=v}\inter\un{b}{\nu=v}$.
+Paper \textsf{int} is translated to Rocq $\Nat$ (truncated subtraction).
+
+\paragraph{Semantic side conditions.} \RN{T-Sub} needs
+$\Gamma\vdash\tau_1\sub\tau_2$ (\rocq{sub\_type\_under}: $\den{\Gamma}\models\den{\tau_1}e\Rightarrow\den{\tau_2}e$
+for all well-typed $e$), and \RN{T-CtxSub} needs
+$\Gamma_1\ctxsub{X}\Gamma_2$ (\rocq{ctx\_sub\_under}: every
+$r\models\den{\Gamma_1}$ has some $r'\models\den{\Gamma_2}$ with $r|_X\sqsubseteq r'$).
+
+\paragraph{Trust model.} Every derivation step is checked by Rocq (\rocq{Qed}).
+Each semantic side condition is a separately named lemma
+\rocq{<program>\_obl\_<what>}. Where an obligation is not machine-proved it is
+\rocq{Admitted} together with an informal argument against the Rocq denotation.
+Every case-study file was audited three times by adversarial reviewers who
+tried to build counterexample capabilities; none of the remaining obligations
+was refuted. The infrastructure (\rocq{ExtendedTyping.v},
+\rocq{ExtendedSubsumption.v}, \rocq{ExtendedRuleSoundness.v},
+\rocq{CaseTypes.v}) contains no \rocq{Admitted}. The project builds with
+\rocq{make}, and no file declares an \rocq{Axiom}.
+
+\begin{center}\small
+\begin{tabular}{lrr@{\qquad}lrr}
+\toprule
+File & \rocq{Qed} & \rocq{Admitted} & File & \rocq{Qed} & \rocq{Admitted}\\
+\midrule
+\rocq{Section1Intro.v} & 56 & 16 & \rocq{MayMust.v} & 84 & 23\\
+\rocq{Section2Typing.v} & 138 & 32 & \rocq{BSTGenerator.v} & 116 & 24\\
+\rocq{Section3Logic.v} & 50 & 9 & \rocq{DisproveMerge.v} & 96 & 13\\
+\rocq{Section4Extension.v} & 79 & 12 & \rocq{ExtendedRuleSoundness.v} & 189 & 0\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% =====================================================================
+\section{Corrections to the case-study infrastructure}
+
+\paragraph{Angelic top.} The aliases $U[b]$ used to be
+\rocq{under\_ty b qual\_top}. Because \rocq{qual\_top} mentions no logic
+variable, its exact atom ranges over the empty set and $\un{b}{\top}$ became
+the \emph{trivial} under type, inhabited by every total term (proved:
+$\ov{b}{q}\sub U[b]$ for any $q$). The paper's $\un{b}{\top}$ means ``every value of
+$b$ is reachable''. The aliases now use
+$\textsf{q\_base\_all}\;b \triangleq \nu \in b$, a qualifier that mentions $\nu$.
+The demonic top $\ov{b}{\top}$ stays trivial, as intended. The same subtlety
+exists on paper: under Def.~4.7, $\mathsf{Atom}(\top)$ has $\mathsf{FV}=\emptyset$.
+
+\paragraph{Generic subtyping lemmas.} \rocq{ExtendedSubsumption.v} now proves
+transitivity, the $\inter$-projections and commutation, over-closure by
+qualifier entailment, and vacuous subtyping from an unsatisfiable context, all
+with \rocq{Qed}. Three previously admitted lemmas were \emph{false} and were
+replaced by corrected, proved versions:
+\begin{itemize}
+\item $\un{b}{q_1}\sub\un{b}{q_2}$ from $q_2\Rightarrow q_1$ fails if $q_2$
+  is unsatisfiable, because $\mathsf{FUnder}(\mathsf{FAtom}\,\bot)$ has no
+  model when worlds are non-empty. It also fails if $q_2$ mentions $\nu$
+  but $q_1$ does not. The corrected lemma adds $\mathsf{vars}(q_2)\subseteq\mathsf{vars}(q_1)$
+  and $\exists s.\,q_2(s)$.
+\item $\ov{b}{q_o}\inter\un{b}{q_u}\sub\un{b}{q_o\wedge q_u}$ fails for
+  $q_u=\top$. The corrected lemma adds $\mathsf{vars}(q_o)\subseteq\mathsf{vars}(q_u)$.
+\end{itemize}
+New lemmas proved along the way include $\tau_x\to\tau\ \sub\ \tau_x\wand\tau$ in
+every context, and closure facts for $\Sum$: for example
+$\ov{b}{q_1}\Sum\un{b}{q}\sub\un{b}{q}$.
+
+% =====================================================================
+\section{New rules}
+
+Figure~\ref{fig:rules} lists the rules added to $\vd$. Each is justified by a
+theorem in \rocq{ExtendedRuleSoundness.v} of the same shape as the core
+Fundamental theorem: if the premises are semantically valid
+($\den{\Gamma_i}\models\den{\tau_i}e_i$) and the side conditions hold, then
+$\den{\Gamma}\models\den{\tau}e$.
+
+\begin{figure}[t]
+\begin{mathpar}
+\inferrule*[right=T-VarComma]
+  {\Sigma \vdash^{\mathsf{WF}} \Gamma\entc x{:}\tau \\ \mathsf{fv}(\tau)\subseteq\mathsf{dom}\lfloor\Gamma\rfloor}
+  {\Sigma;\ \Gamma \entc x{:}\tau \vd x : \tau}
+
+\inferrule*[right=T-CtxCase]
+  {\Sigma;\Gamma_a \vd e:\tau \\ \Sigma;\Gamma_b \vd e:\tau \\
+   \Gamma \ctxcase{\mathsf{fv}(e)\cup\mathsf{fv}(\tau)} \Gamma_a \mid \Gamma_b}
+  {\Sigma;\Gamma \vd e:\tau}
+\\
+\inferrule*[right=T-FixUnroll]
+  {\mathsf{lc}(e_b) \\
+   \Sigma;\Gamma \vd \lambda a{:}s.\ e_b[f \mapsto \kw{fix}\,f.\lambda a.e_b] : \tau}
+  {\Sigma;\Gamma \vd \kw{fix}\,f.\lambda a{:}s.\ e_b : \tau}
+
+\inferrule*[right=T-ListMatchCons]
+  {\Sigma;\Gamma \vd h :: t : \Eq{x} \\ \Sigma;\Gamma \vd e_c : \tau}
+  {\Sigma;\Gamma \vd \kw{match}\ x\ \kw{with}\ [\,]\to e_n \mid h::t \to e_c : \tau}
+\\
+\inferrule*[right=T-ListMatchBoth]
+  {\Sigma;\Gamma_n \vd [\,] : \Eq{x} \\ \Sigma;\Gamma_c \vd h::t : \Eq{x} \\
+   \Sigma;\Gamma_n \vd e_n:\tau_n \\ \Sigma;\Gamma_c \vd e_c:\tau_c}
+  {\Sigma;\Gamma_n\Sum\Gamma_c \vd \kw{match}\ x\ \kw{with}\ [\,]\to e_n \mid h::t\to e_c : \tau_n\Sum\tau_c}
+\end{mathpar}
+\vspace{-1ex}
+\[
+\Gamma \ctxcase{X} \Gamma_a\mid\Gamma_b \;\triangleq\;
+\forall r\models\den{\Gamma}.\ \exists r'.\ r|_X\sqsubseteq r' \wedge
+\big(r'\models\den{\Gamma_a} \vee r'\models\den{\Gamma_b}\big)
+\]
+\caption{Rules added to the case-study judgment. The side condition of
+T-CtxCase also requires well-formedness and erasure agreement on $X$. The tree-match rules are
+analogous to the list ones, with $[\,]\mapsto\mathsf{Leaf}$, the pattern
+$h::t$ replaced by $\mathsf{Node}(r,l,rr)$, and the extra premise $l\neq rr$.
+The Rocq rules use named binders (\rocq{lam\_named}, \rocq{fixfun\_named},
+\rocq{match\_list\_named}).}
+\label{fig:rules}
+\end{figure}
+
+\paragraph{T-VarComma} (\rocq{EXT\_VarComma}; sound: \rocq{ext\_var\_comma\_sound}).
+Core \RN{T-Var} types $x$ only in the singleton context $x{:}\tau$. The paper
+checks such a context under the basic context $\Sigma,\lfloor\Gamma\rfloor$
+(\textsc{WfComma}), so $\tau$ may mention $\Gamma$. In Rocq, $\Sigma$ is a
+fixed parameter of the judgment and type well-formedness is checked against
+$\lfloor\Gamma\rfloor$ only, so T-CtxSub alone cannot project
+$\Gamma\entc x{:}\tau$ down to $x{:}\tau$ when $\tau$ depends on $\Gamma$.
+T-VarComma keeps the dependencies in the context; T-CtxSub does all other
+structural work (weakening, exchange, framing). It is what makes recursive
+calls such as $f\,(x-1)$, whose argument needs $\nu\prec x$, and variables with
+dependent types such as $y{:}\ov{\Nat}{\nu=x+1}$ usable at all.
+
+\paragraph{T-CtxCase} (\rocq{EXT\_CtxCase}; sound: \rocq{ext\_ctx\_case\_sound}).
+This is a disjunctive form of T-CtxSub: every capability of $\Gamma$, projected
+on the free variables, is a capability of $\Gamma_a$ or of $\Gamma_b$. It
+resolves the main expressiveness gap we found. The match rules require either
+a split $\Gamma_t\Sum\Gamma_f$ into two \emph{non-empty} summands (both
+branches reachable) or a uniform guard (one branch only). But a demonic
+binding $x{:}\ov{\Nat}{\top}$ admits capabilities that reach only one branch
+and capabilities that reach both, so no single choice works. For instance,
+$x{:}\ov{\Nat}{\top}\vdash \kw{if}\ x{=}0\ \kw{then}\ 3\ \kw{else}\ 5 : \ov{\Nat}{\nu{=}3\vee\nu{=}5}$
+was not derivable before. With T-CtxCase the derivation splits the
+capabilities into ``true only'', ``false only'' and ``both'', and each case
+uses the existing match rules.
+
+\paragraph{T-FixUnroll} (\rocq{EXT\_FixUnrollNamed}; sound:
+\rocq{ext\_fix\_unroll\_named\_sound\_ext}, for \emph{every} target type). A
+fixpoint may be typed by its one-step unfolding. This is the standard
+unrolling of incorrectness reasoning, used for the merge disproof
+(\S\ref{sec:merge}). The proof is a world-level value transport: two
+locally closed values with equal free variables whose applications are
+equivalent have the same type denotation (\rocq{ext\_vt\_main}). The premise
+$\mathsf{lc}(e_b)$ is necessary: a dangling bound variable would be captured
+by different binders in the fixpoint and in its unfolding.
+
+\paragraph{Paper-form matches} (sound: \rocq{ext\_list\_match\_*\_paper\_rule\_sound},
+\rocq{ext\_tree\_match\_*}). As in the paper's \RN{T-Match}, the context of a
+reachable branch binds the pattern variables itself, with types chosen by the
+user. They are introduced beforehand by T-CtxSub, whose extension condition is
+the semantic content. The pre-existing cofinite rules forced the pattern
+binders to $\ov{\Nat}{\top}$ and $\ov{\List}{\top}$, which makes the equation
+premise $h::t:\Eq{x}$ unprovable.
+
+\paragraph{An unsound first attempt.} Our first version checked the branch
+premises under $\Gamma\entc\Gamma_{\mathit{pat}}$ but concluded at $\Gamma$.
+That is unsound, because an unmodelable $\Gamma_{\mathit{pat}}$ makes every
+premise vacuous. Rocq derives
+$\vd \kw{match}\ [1]\ \ldots : \ov{\Nat}{\bot}$ from that rule shape
+(\rocq{ext\_list\_match\_cons\_only\_named\_unsound}, kept as a
+machine-checked warning).
+
+\paragraph{Named-binder variants.} We also added \RN{T-LamD}, \RN{T-LetD} and
+\RN{T-Fix} variants with concrete binders
+(\rocq{EXT\_LamDNamedErased}, \rocq{EXT\_LetDNamed}, \rocq{EXT\_FixNamed}). They
+mirror the cofinite core rules in the same way as the pre-existing
+\rocq{EXT\_LamNamed} and \rocq{EXT\_LetNamed}; their soundness is not proved
+separately (\S\ref{sec:open}).
+
+% =====================================================================
+\section{Concrete derivations}
+
+\subsection{Figure 6(a): may-analysis helps must-analysis}\label{sec:fig6a}
+
+The program is
+$f = \lambda g.\lambda x.\lambda y.\ \kw{let}\ c = y > 10\ \kw{in}\
+\kw{if}\ c\ \kw{then}\ (\kw{let}\ gx = g\,x\ \kw{in}\ gx + 1)\ \kw{else}\ x + 1$,
+with may-summary $\tau_g \triangleq \ov{\Nat}{\top}\to\ov{\Nat}{\nu\neq 0}$.
+We formalized the three settings proposed by the authors.
+
+\paragraph{Setting (1)} $x{:}\un{\Nat}{\nu=0}\to y{:}\un{\Nat}{\nu\le 10}\to\un{\Nat}{\nu=1}$
+is \emph{semantically false}. Because ``$\to$'' entangles $y$ with $x$, the
+capability
+\[ r = \{(x{=}0,\,y{=}11)\}\ \cup\ \{(x{=}1,\,y{=}n)\mid n\le 10\}\]
+satisfies both bindings: $x=0$ is reachable, and every $y\le10$ is reachable,
+since $y$'s qualifier does not mention $x$ and is therefore not fibered by $x$.
+Yet $f$ never returns $1$: the store $(0,11)$ takes the then-branch, where
+$g\,0+1\neq1$, and every other store returns $2$. Matching on $y$ is exactly
+what ``loses'' $x$'s guarantee. No rule can derive this type, since the rules
+are sound.
+
+\paragraph{Setting (2)} $x{:}\un{\Nat}{\nu=0}\to y{:}\un{\Nat}{\nu\le 10}\wand\un{\Nat}{\nu=1}$
+is valid and derived (\rocq{fig6a\_2\_typing}). After the three abstractions
+and the \kw{let} of $c$, the body context is
+\[\Gamma_2 = (g{:}\tau_g\entc x{:}\un{\Nat}{\nu{=}0})\sep y{:}\un{\Nat}{\nu{\le}10}\ \entc\ c{:}\Prec{y>10}.\]
+The derivation splits on whether $y$'s capability reaches a value $>10$. The
+branch contexts are
+$\Gamma_T = g{:}\tau_g\entc x{:}\ov{\Nat}{\top}\entc c{:}\Prec{\mathsf{true}}$ and
+$\Gamma_F = g{:}\tau_g\entc x{:}\un{\Nat}{\nu{=}0}\entc c{:}\Prec{\mathsf{false}}$.
+\[
+\inferrule*[right=CtxCase]
+ {\mathcal{D}_1 \\ \mathcal{D}_2 \\ \obl{\Gamma_2 \ctxcase{} \Gamma_F \mid \Gamma_T\Sum\Gamma_F}}
+ {\Gamma_2 \vd \kw{if}\ c\ \kw{then}\ \ldots\ \kw{else}\ \ldots : \un{\Nat}{\nu{=}1}}
+\qquad
+\mathcal{D}_1 =
+\inferrule*[right=MatchFalseOnly]
+  {\Gamma_F\vd c:\Prec{\mathsf{false}} \\ \mathcal{D}_{\mathit{else}}}
+  {\Gamma_F \vd \kw{if}\ldots : \un{\Nat}{\nu{=}1}}
+\]
+\[
+\mathcal{D}_2 =
+\inferrule*[right=Sub]
+ {\inferrule*[right=MatchBoth]
+    {\Gamma_T\vd c:\Prec{\mathsf{true}}\\ \Gamma_F\vd c:\Prec{\mathsf{false}}\\
+     \mathcal{D}_{\mathit{then}} \\ \mathcal{D}_{\mathit{else}}}
+    {\Gamma_T\Sum\Gamma_F\vd \kw{if}\ldots : \ov{\Nat}{\nu{\ne}1}\Sum\un{\Nat}{\nu{=}1}}
+  \\ \qed{\Sum\text{-absorption}}}
+ {\Gamma_T\Sum\Gamma_F \vd \kw{if}\ldots : \un{\Nat}{\nu{=}1}}
+\]
+\[
+\mathcal{D}_{\mathit{else}} =
+\inferrule*[right=Sub]
+ {\inferrule*[right=BinOp]{ }{\Gamma_F\vd x+1:\Prec{x+1}} \\ \obl{\mathit{else\_eq1\_x0}}}
+ {\Gamma_F\vd x+1:\un{\Nat}{\nu{=}1}}
+\]
+\[
+\mathcal{D}_{\mathit{then}} =
+\inferrule*[right=Let]
+ {\inferrule*[right=AppFun]{\ldots}{\Gamma_T\vd g\,x:\ov{\Nat}{\nu{\ne}0}} \\
+  \inferrule*[right=Sub]{\Gamma_T'\vd gx+1:\Prec{gx+1} \\ \obl{\mathit{then\_ne1}}}
+   {\Gamma_T'\vd gx+1:\ov{\Nat}{\nu{\ne}1}}}
+ {\Gamma_T\vd \kw{let}\ gx = g\,x\ \kw{in}\ gx+1 : \ov{\Nat}{\nu{\ne}1}}
+\]
+where $\Gamma_T' = \Gamma_T\entc gx{:}\ov{\Nat}{\nu\ne0}$.
+The case-split obligation is where ``$\sep$'' matters. In the second case,
+every store of the $g,x$ part is paired with some $y>10$ (making $c$ true)
+\emph{and} with $y=0$ (making $c$ false). So $x=0$ is still reachable in the
+$c=\mathsf{false}$ summand, which is what $\mathcal{D}_{\mathit{else}}$ needs.
+With ``$\entc$'' this pairing fails: the counterexample of setting (1) is
+exactly such an unpaired capability. The may-summary of $g$ enters only
+through \textit{then\_ne1}: the then-branch never produces $1$, so it can be
+absorbed into the angelic $\un{\Nat}{\nu=1}$.
+
+\paragraph{Setting (3)}
+$x{:}\un{\Nat}{\top}\to y{:}\un{\Nat}{(x{=}0\Rightarrow\nu{=}12)\wedge(x{>}0\Rightarrow\nu{\le}10)}\to\tau_3$.
+The authors left the result type open. The strongest sound one is
+$\tau_3 = \ov{\Nat}{\nu\neq1}\Sum\un{\Nat}{\nu\geq2}$, derived as
+\rocq{fig6a\_3\_typing}. Both branches are reachable: $x=0$ forces $y=12$,
+taking the then-branch, which never returns $1$ by the may-summary of $g$. In
+the else-branch, every $x\ge1$ is paired with $y=0$, so $x+1$ reaches every
+$n\ge2$. A result type mentioning $\un{\Nat}{\nu=1}$ is unsound, because $x=0$
+is paired only with $y=12$.
+
+\paragraph{Figure 6(b).} With the paper's summary
+$g:(\ov{\Nat}{\top}\to\ov{\Nat}{\nu>0})\inter(\un{\Nat}{\top}\to\un{\Nat}{\nu>0})$,
+the stated type $x{:}\ov{\Nat}{\top}\to\ov{\Nat}{\nu{=}2}\Sum\ov{\Nat}{\nu{=}5}$
+is false. The function $g=\lambda n.n+1$ satisfies both summaries, yet the
+singleton capability $x=0$ yields only $2$, and ``$\Sum$'' needs both parts
+non-empty. The angelic version $x{:}\un{\Nat}{\top}\to\ldots$ is derived. The
+safety-only type $x{:}\ov{\Nat}{\top}\to\ov{\Nat}{\nu\geq0}$ is derived with
+two nested T-CtxCase splits on $a>10$.
+
+\subsection{A demonic guard: the introduction's Peano subtraction}\label{sec:minus}
+
+For $\lambda x.\lambda y.\ \kw{let}\ c = x\le y\ \kw{in}\ \kw{if}\ c\ \kw{then}\ 0\ \kw{else}\ x-y$
+at $\tau_a = x{:}\ov{\Nat}{\nu>0}\to y{:}\ov{\Nat}{\nu>0}\to\ov{\Nat}{\nu\le x}$
+(\rocq{nat\_minus\_program\_tau\_a}), the guard is not determined by the
+demonic context
+$\Gamma_1 = x{:}\ov{\Nat}{\nu{>}0}\entc y{:}\ov{\Nat}{\nu{>}0}\entc c{:}\Prec{x\le y}$.
+A context cannot directly say ``the guard is not constant'', so we nest two
+splits. The intermediate context
+$\Gamma_{\neg T} = \ldots\entc c{:}\un{\Bool}{\nu=\mathsf{false}}$ states
+``$\mathsf{false}$ is reachable''. Its type is a closed under type, so no
+fibering is involved. Let $\Gamma_T$ and $\Gamma_F$ rebind $c$ to
+$\Prec{\mathsf{true}}$ and $\Prec{\mathsf{false}}$, and let
+$\mathit{if}$ abbreviate the conditional.
+Write $\tau_{\le} = \ov{\Nat}{\nu\le x}$. The three branch derivations are
+\[
+\mathcal{D}_T =
+\inferrule*[right=MatchTrueOnly]
+ {\Gamma_T\vd c:\Prec{\mathsf{true}} \\
+  \inferrule*[right=Sub]{\Gamma_T\vd 0:\Prec{0} \\ \obl{zero}}{\Gamma_T\vd 0:\tau_{\le}}}
+ {\Gamma_T\vd \mathit{if}:\tau_{\le}}
+\]
+\[
+\mathcal{D}_F =
+\inferrule*[right=MatchFalseOnly]
+ {\Gamma_F\vd c:\Prec{\mathsf{false}} \\
+  \inferrule*[right=Sub]{\Gamma_F\vd x-y:\Prec{x-y} \\ \obl{false\_result}}{\Gamma_F\vd x-y:\tau_{\le}}}
+ {\Gamma_F\vd \mathit{if}:\tau_{\le}}
+\]
+\[
+\mathcal{D}_{TF} =
+\inferrule*[right=Sub]
+ {\inferrule*[right=MatchBoth]
+   {\Gamma_T\vd c:\Prec{\mathsf{true}} \\ \Gamma_F\vd c:\Prec{\mathsf{false}} \\ \ldots}
+   {\Gamma_T\Sum\Gamma_F\vd \mathit{if}:\tau_{\le}\Sum\tau_{\le}}
+  \\ \obl{sum}}
+ {\Gamma_T\Sum\Gamma_F\vd \mathit{if}:\tau_{\le}}
+\]
+and they are combined by two case splits:
+\[
+\inferrule*[right=CtxCase]
+ {\mathcal{D}_T \\
+  \inferrule*[right=CtxCase]
+   {\mathcal{D}_F \\ \mathcal{D}_{TF} \\ \obl{case\_rest}}
+   {\Gamma_{\neg T}\vd \mathit{if}:\tau_{\le}}
+  \\ \obl{case\_true}}
+ {\Gamma_1\vd \kw{if}\ c\ \kw{then}\ 0\ \kw{else}\ x-y : \tau_{\le}}
+\]
+The guard premises ($\Gamma_T\vd c:\Prec{\mathsf{true}}$, etc.) are T-CtxSub
+followed by T-Var, and are proved. The same pattern derives the angelic
+corrected type $x{:}\un{\Nat}{\nu>0}\to y{:}\un{\Nat}{\nu>0}\wand\un{\Nat}{\nu>0}$
+for the paper's \textsf{div} guard (\rocq{div\_guard\_program\_tau\_b\_wand}). There, the split is on
+whether $y=0$ is reachable.
+
+\subsection{Persistence: two independent generator calls (\S5)}
+
+For the generator form of $e_{\mathit{ND}}$
+(\rocq{e\_ND\_gen\_program\_extended\_type}),
+\[\kw{let}\ f=\lambda\_.\mathsf{gen}_{\Nat}()\ \kw{in}\ \kw{let}\ a=\mathsf{true}\ \kw{in}\
+\kw{let}\ y_1 = f\,a\ \kw{in}\ \kw{let}\ y_2 = f\,a\ \kw{in}\ y_1-y_2 \;:\; \un{\Nat}{\top},\]
+the derivation is linear:
+\begin{enumerate}
+\item T-Let: $f : \pers(\ov{\Bool}{\top}\to\un{\Nat}{\top})$ by \RN{T-PersistIntro}, and
+  $a:\Prec{\mathsf{true}}$. Let $\Gamma_a$ be the resulting context.
+\item T-Let: $\Gamma_a\vd f\,a:\un{\Nat}{\top}$, using \RN{T-PersE} as the
+  subtyping $\pers\tau\sub\tau$ \obl{persist\_elim}.
+\item T-CtxSub: $\Gamma_a\entc y_1{:}\un{\Nat}{\top}\ \preceq\ \Gamma_a\sep y_1{:}\un{\Nat}{\top}$
+  \qed{comma\_to\_star}. This holds because $\pers$ makes the $f$-projection a
+  singleton and $a$ is precise, so the entangled context factors as a product.
+\item T-LetD with $\Gamma_1=\Gamma_a$: $\Gamma_a\vd f\,a:\un{\Nat}{\top}$, and
+  $y_1{:}\un{\Nat}{\top}\sep y_2{:}\un{\Nat}{\top}\vd y_1-y_2:\un{\Nat}{\top}$ by
+  BinOp and Sub \obl{minus\_sub}.
+\end{enumerate}
+The paper's duplication $x{:}\pers\tau\preceq x{:}\pers\tau\sep x{:}\pers\tau$
+is ill-formed in Rocq, where $\sep$ requires disjoint domains. Step~3 replaces
+it. With $f=\lambda x.z$ or $f=\lambda x.0\oplus\lambda x.\mathsf{gen}()+1$
+instead of the generator, the corresponding judgments are semantically false,
+consistent with the paper's \ding{55} marks.
+
+\subsection{Disproving merge by unrolling (Fig.~8)}\label{sec:merge}
+
+Let $\mathsf{O}[l] \triangleq \ov{\List}{\nu=l}$ and $\mathsf{P}[l]\triangleq\Prec{l}$.
+We derive (\rocq{merge\_cex\_extended\_type})
+\[\vd \mathit{merge} : \mathsf{P}[1;2]\wand \mathsf{P}[3;4]\wand \ov{\List}{\neg\mathit{sorted}(\nu)}\Sum\ov{\List}{\top},\]
+the paper's disproof type instantiated at the counterexample inputs, since
+$\mathit{merge}\,[1;2]\,[3;4] = [1;3;2;4]$. The derivation has three
+unrolling levels; each one uses T-FixUnroll, so T-Fix is never used.
+\begin{itemize}
+\item \textbf{Level B} (\rocq{mu\_fix00}): $\mathit{fix}:\mathsf{O}[\,]\to\mathsf{O}[\,]\to\mathsf{O}[\,]$.
+ The steps are FixUnroll, Lam, Lam, then \RN{ListMatchNilOnly}; the equation
+ premise $[\,]:\Eq{xs}$ is Const followed by Sub \obl{nil\_eq}, and the branch
+ is T-VarComma.
+\item \textbf{Level A} (\rocq{mu\_fix24}): $\mathit{fix}:\mathsf{O}[2]\to\mathsf{O}[4]\to\mathsf{O}[2;4]$.
+\[
+\inferrule*[right={FixUnroll; Lam$^2$}]
+ {\inferrule*[right=CtxSub]
+   {\inferrule*[right=ListMatchCons]
+     {\mathcal{E}_1 \\ \mathcal{M}_{ys}}
+     {G_{A1}\vd \kw{match}\ xs\ \ldots : \mathsf{O}[2;4]}
+    \\ \qed{pat_1}}
+   {G_{A0} \vd \kw{match}\ xs\ \ldots : \mathsf{O}[2;4]}}
+ {\vd \kw{fix}\ \mathit{merge}.\ldots : \mathsf{O}[2]\to\mathsf{O}[4]\to\mathsf{O}[2;4]}
+\]
+\[
+\mathcal{E}_1 =
+\inferrule*[right=Sub]
+ {\inferrule*[right=ListCons]{\ldots}{G_{A1}\vd h_1::t_1:\Prec{h_1::t_1}} \\ \obl{eq_1}}
+ {G_{A1}\vd h_1::t_1:\Eq{xs}}
+\]
+\[
+\mathcal{M}_{ys} =
+\inferrule*[right=CtxSub]
+ {\inferrule*[right=ListMatchCons]{\mathcal{E}_2\ \obl{eq_2} \\ \mathcal{D}_{\mathit{step}}}
+   {G_{A2}\vd \kw{match}\ ys\ \ldots:\mathsf{O}[2;4]}
+  \\ \qed{pat_2}}
+ {G_{A1}\vd \kw{match}\ ys\ \ldots:\mathsf{O}[2;4]}
+\]
+ with $G_{A0} = xs{:}\mathsf{O}[2]\entc ys{:}\mathsf{O}[4]$.
+ Here $G_{A1} = G_{A0}\entc h_1{:}\ov{\Nat}{\nu{=}2}\entc t_1{:}\mathsf{O}[\,]$
+ binds the pattern variables, introduced by the proved pattern lemma
+ \qed{pat_1}. $\mathcal{D}_{\mathit{step}}$ continues as follows: a Let binds
+ $t = \mathit{fix}\,t_1\,t_2 : \mathsf{O}[\,]$ by AppFun at level B, with the
+ partial application typed by T-VarComma; a Let binds
+ $\mathit{lt} = h_1{<}h_2:\Prec{h_1<h_2}$; then MatchTrueOnly
+ \obl{lt\_true}, a Let for $h_2::t$, and Sub on $h_1::(h_2::t)$
+ \obl{leaf}.
+\item \textbf{Level O}: the same shape at $\mathsf{P}[1;2]\to(\mathsf{P}[3;4]\wand\ldots)$,
+ calling level A for $\mathit{merge}\,[2]\,[4]$. The final Sub to
+ $\ov{\List}{\neg\mathit{sorted}}\Sum\ov{\List}{\top}$ is
+ \obl{unsorted}: $[1;3;2;4]$ is unsorted. The outer ``$\to$'' becomes
+ ``$\wand$'' through the general lemma $\tau_x\to\tau\sub\tau_x\wand\tau$ \qed{arrow\_wand}.
+\end{itemize}
+Every Admitted obligation here concerns a context in which all variables are
+constants, so each fibering has a single fiber.
+
+\subsection{Summary of all case studies}
+
+\begin{center}\small
+\begin{tabular}{p{0.24\textwidth}p{0.71\textwidth}}
+\toprule
+Paper item & Outcome in Rocq\\
+\midrule
+\S1 $\tau_a$ for \textsf{div}/minus & Derived; the minus variant uses nested CtxCase (\S\ref{sec:minus}).\\
+\S1 $\tau_b$ with only ``$\to$'' & \emph{False}: on $\{x{=}n,y{=}m\mid 1\le n\le m\}$, $x-y$ is always $0$. The corrected ``$\wand$'' version is derived. The informal p.2 fix (only $f$'s parameter independent) is insufficient; both p.8 fixes are fully proved.\\
+\S2 contexts $C_{\mathit{dis}}$, $C_{\mathit{en}}$, $\Gamma_{\mathit{dis}}$, $\Gamma_{\mathit{en}}$ & All \ding{51}/\ding{55} judgments are confirmed. $x-(z+y)$ is derived with T-LetI by giving $z+y$ a demonic type.\\
+\S2/\S3 $\Sum$ examples, Ex.~3.4 & Derived, including the demonic version $x{:}\ov{\Nat}{\top}\vdash\kw{if}\ x{=}0\ldots$ via CtxCase.\\
+Ex.~3.1 & The conclusion is derived, but the paper's intermediate premise $x{:}\ov{\Nat}{\nu<10}\entc y{:}\ov{\Nat}{\nu<7}\vdash x-y:\ov{\Nat}{\nu\le3}$ is \emph{invalid} ($(9,0)$). The derivation must keep $y$ precise.\\
+Ex.~3.3 (\textsf{sub}) & True, but \emph{not derivable}: the T-Fix issue of \S\ref{sec:open}.\\
+p.8 nested $f\,(f\,y)$ & Right-nested A-normal form is not derivable, because \kw{let} entangles $r_2$ with $x$. The monadic-normal-form nesting is derived.\\
+\S4 Ex.~4.5, 4.6 & Derived; several fully proved.\\
+\S5 generators, $\pers$ & $\mathsf{gen}_{\Bool}():\ov{\Bool}{\nu{=}\mathsf{true}}\Sum\ov{\Bool}{\nu{=}\mathsf{false}}$ derived; the generator form of $e_{\mathit{ND}}$ derived; the non-persistent variants are false, as the paper marks.\\
+Fig.~6(a) & (1) false; (2) and (3) derived (\S\ref{sec:fig6a}).\\
+Fig.~6(b) & The demonic-$x$ type is false; the angelic version and the safety version are derived.\\
+Fig.~7 (\textsf{bst\_gen}) & The stated type is \emph{vacuously true}: $\pers(x{:}\ov{\Nat}{\top}\to y{:}\ov{\Nat}{x<\nu}\to\un{\Nat}{x<\nu<y})$ is uninhabited, because $x{=}1,y{=}2$ gives an empty exact angelic atom. The ``$\le$'' repair is false by totality. A precise-range version is true; its outer layers and range call are derived, and the rest is blocked by T-Fix.\\
+Fig.~8 (merge) & The counterexample instance is derived by unrolling (\S\ref{sec:merge}). The literal type with $\un{\List}{\top}$ parameters does not witness the bug: a correct merge also has it, via $\mathit{merge}\,[\,]\,l=l$. The version with sorted angelic parameters is blocked by T-Fix.\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+% =====================================================================
+\section{Open issues}\label{sec:open}
+
+\paragraph{1. The recursive binder of T-Fix is vacuous on mixed capabilities.}
+\RN{T-Fix} types the body under
+$f : (\ov{b}{\phi}\inter\ov{b}{\nu\prec x})\to\tau$. The arrow denotation is a
+Kripke implication over whole-world argument extensions, with the argument
+type fibered by $x$. On any capability that contains a $\prec$-minimal $x$
+(for example $x=0$, or $xs=[\,]$) alongside larger values, no argument satisfies
+$\nu\prec x$ in the minimal fiber. The implication therefore holds vacuously,
+and \emph{every} $f$ satisfies the binding, including a diverging one. Since
+type denotations include totality, the premise of T-Fix is false whenever the
+body actually recurses, and no rule can derive it. This was found
+independently in Ex.~3.3, Fig.~7 and Fig.~8, and confirmed by audits, but it is
+not yet a machine-checked lemma. The paper's arrow denotation seems to share
+it. A plausible repair is to fiber the recursive binding by $x$, i.e.\ evaluate
+$f$'s type per $x$-fiber ($x\triangleright\ldots$), as a new T-Fix variant
+with its own soundness proof. This decision is pending.
+
+\paragraph{2. Unproved semantic obligations.} 129 obligations remain
+\rocq{Admitted}. Most are of a few recurring kinds: $\Sum$-splits of contexts,
+operator-result subtyping on single or constant fibers, and $\pers$
+elimination. They are not proved because the library lacks world-level
+introduction and elimination lemmas for $\mathsf{FPlus}$, world filters, and
+precise types at $\kw{ret}\,x$. Adding these generically would discharge
+most of the obligations at once.
+
+\paragraph{3. Soundness of the extended judgment as a whole.}
+\rocq{ExtendedRuleSoundness.v} proves the \emph{new} rules sound in isolation.
+The pre-existing convenience rules (\rocq{EXT\_BinOp}, \rocq{EXT\_AppOpValue},
+\rocq{EXT\_TreeNode}, \rocq{EXT\_ListCons}, the named
+\rocq{Lam}/\rocq{Let}/\rocq{LamD}/\rocq{LetD}/\rocq{Fix} variants) still have no
+soundness proof. A full Fundamental theorem for $\vd$, by induction reusing
+the per-rule lemmas, is the natural next step.
+
+\paragraph{4. Smaller semantic mismatches with the paper.}
+\begin{itemize}
+\item The angelic bottom $\un{b}{\bot}$ is uninhabited under exact atoms,
+  whereas the paper states $\ov{\Nat}{\nu>0}\sub\un{\Nat}{\bot}$ (p.5).
+\item Persistent duplication needs the disjoint-domain workaround of \S4.3.
+\item T-AppFun and T-AppOp take only variable arguments, so several programs
+  were A-normalized; all such variants are documented in the files.
+\end{itemize}
+
+% =====================================================================
+\section{Conclusion}
+
+With four rule extensions, each proved sound against the core denotation,
+almost every case study of the paper now has a mechanized derivation whose
+structural part is checked by Rocq. Making the derivations explicit exposed
+several issues in the paper:
+\begin{itemize}
+\item a dependency bug in Fig.~6(a) setting (1), which the ``$\wand$'' setting
+  (2) repairs;
+\item a false type in Fig.~6(b);
+\item a vacuous type in Fig.~7;
+\item a non-witnessing disproof type in Fig.~8;
+\item an invalid intermediate judgment in Ex.~3.1;
+\item an unfaithful translation of $\un{b}{\top}$.
+\end{itemize}
+The main remaining obstacle is the vacuity of T-Fix's recursive binder on
+mixed capabilities. Resolving it, for example with a fibered recursive
+binding, would unblock the three recursive examples: Ex.~3.3, Fig.~7 and the
+sorted-input form of Fig.~8.
+
+\end{document}

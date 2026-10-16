@@ -127,6 +127,7 @@ ProofAutomation/theories/BasicTypeInfer.v
 ProofAutomation/theories/ExtendedTyping.v
 ProofAutomation/theories/ExtendedSubsumption.v
 ProofAutomation/theories/ExtendedTypeInfer.v
+ProofAutomation/theories/ExtendedRuleSoundness.v
 
 -R CaseStudy/theories CaseStudy
 

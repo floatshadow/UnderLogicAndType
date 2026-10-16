@@ -72,21 +72,30 @@ Definition q_nonneg (v : value) : type_qualifier :=
 
 (** ** Type aliases *)
 
+(** The paper's angelic top [[ν: b | ⊤]] ("every value of [b] is reachable")
+    must use a qualifier that MENTIONS [ν].  [under_ty b qual_top] is NOT a
+    faithful translation: [qual_top] has no logic variables, so its exact atom
+    ranges over the empty variable set and [[: b | qual_top]] is the TRIVIAL
+    under type, inhabited by every total term.  The demonic top
+    [over_ty b qual_top] is trivial too, which is the intended meaning. *)
+Definition q_base_all (b : base_ty) : type_qualifier :=
+  q_const_pred vnu (fun c => base_ty_of_const c = b).
+
 Definition ONat : context_ty := over_ty TNat qual_top.
-Definition UNat : context_ty := under_ty TNat qual_top.
+Definition UNat : context_ty := under_ty TNat (q_base_all TNat).
 Definition OBool : context_ty := over_ty TBool qual_top.
-Definition UBool : context_ty := under_ty TBool qual_top.
+Definition UBool : context_ty := under_ty TBool (q_base_all TBool).
 Definition OTree : context_ty := over_ty TTree qual_top.
-Definition UTree : context_ty := under_ty TTree qual_top.
+Definition UTree : context_ty := under_ty TTree (q_base_all TTree).
 Definition OList : context_ty := over_ty TList qual_top.
-Definition UList : context_ty := under_ty TList qual_top.
+Definition UList : context_ty := under_ty TList (q_base_all TList).
 
 Definition precise_const (c : constant) : context_ty :=
   const_precise_ty c.
 
 Notation "'O[' b ']'" := (over_ty b qual_top)
   (at level 0, b at level 200, format "O[ b ]") : cty_scope.
-Notation "'U[' b ']'" := (under_ty b qual_top)
+Notation "'U[' b ']'" := (under_ty b (q_base_all b))
   (at level 0, b at level 200, format "U[ b ]") : cty_scope.
 
 (** ** Small well-formedness facts for examples *)
@@ -94,7 +103,8 @@ Notation "'U[' b ']'" := (under_ty b qual_top)
 Ltac case_type_wf_syntax :=
   unfold basic_context_ty, ONat, UNat, OBool, UBool, OTree, UTree, OList, UList,
     precise_const, const_precise_ty, precise_ty, over_ty, under_ty,
-    q_true, q_false, bool_qual, mk_q_eq, qual_top;
+    q_true, q_false, bool_qual, mk_q_eq, qual_top,
+    q_base_all, q_const_pred, vnu;
   cbn [wf_context_ty_at erase_ty qual_vars qual_lvars lvar_value_keys];
   repeat split; try reflexivity;
   intros [k|x] Hx; cbn [lvar_wf_at] in *; try lia; set_solver.
